@@ -362,6 +362,11 @@
       const rt = document.getElementById('result-text');
       rt.textContent = data.result;
       rt.style.display = '';
+      navigator.clipboard.writeText(data.result).then(() => {
+        const toast = document.getElementById('toast');
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2000);
+      });
     } catch (e) {
       document.getElementById('result-empty').textContent = e.message;
       document.getElementById('result-empty').style.display = '';
