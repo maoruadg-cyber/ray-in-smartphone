@@ -317,13 +317,23 @@
     clearResult();
   }
 
+  let autoTimer = null;
+
   function updateChar() {
     const len = document.getElementById('input-text').value.length;
     document.getElementById('char-count').textContent = len;
+
+    clearTimeout(autoTimer);
+    if (len > 0) {
+      autoTimer = setTimeout(translate, 800);
+    } else {
+      clearResult();
+    }
   }
 
   function clearResult() {
     document.getElementById('result-empty').style.display = '';
+    document.getElementById('result-empty').textContent = '翻訳結果がここに表示されます';
     document.getElementById('result-text').style.display = 'none';
     document.getElementById('result-text').textContent = '';
   }
@@ -373,12 +383,8 @@
     });
   }
 
-  // Enter key (Ctrl+Enter) to translate
   document.addEventListener('DOMContentLoaded', () => {
     switchMode('staff');
-    document.getElementById('input-text').addEventListener('keydown', e => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') translate();
-    });
   });
 </script>
 </body>
