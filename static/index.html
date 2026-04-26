@@ -392,11 +392,33 @@
   function copyResult() {
     const text = document.getElementById('result-text').textContent;
     if (!text) return;
-    navigator.clipboard.writeText(text).then(() => {
+
+    const showToast = () => {
       const toast = document.getElementById('toast');
       toast.classList.add('show');
       setTimeout(() => toast.classList.remove('show'), 2000);
-    });
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(showToast).catch(() => fallbackCopy(text, showToast));
+    } else {
+      fallbackCopy(text, showToast);
+    }
+  }
+
+  function fallbackCopy(text, callback) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+      document.execCommand('copy');
+      callback();
+    } catch (e) {}
+    document.body.removeChild(ta);
   }
 
   document.addEventListener('DOMContentLoaded', () => {
