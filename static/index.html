@@ -185,6 +185,19 @@
       line-height: 1.7;
       white-space: pre-wrap;
       min-height: 80px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: rgba(26,86,219,0.1);
+    }
+
+    .result-text:active {
+      background: #f0f7ff;
+    }
+
+    .tap-hint {
+      text-align: center;
+      font-size: 11px;
+      color: #a0aec0;
+      padding: 0 16px 10px;
     }
 
     .result-empty {
@@ -272,7 +285,8 @@
       <button class="copy-btn" onclick="copyResult()">コピー</button>
     </div>
     <div class="result-empty" id="result-empty">翻訳結果がここに表示されます</div>
-    <div class="result-text" id="result-text" style="display:none"></div>
+    <div class="result-text" id="result-text" style="display:none" onclick="copyResult()"></div>
+    <div class="tap-hint" id="tap-hint" style="display:none">タップでコピー</div>
   </div>
 
 </div>
@@ -336,6 +350,7 @@
     document.getElementById('result-empty').textContent = '翻訳結果がここに表示されます';
     document.getElementById('result-text').style.display = 'none';
     document.getElementById('result-text').textContent = '';
+    document.getElementById('tap-hint').style.display = 'none';
   }
 
   async function translate() {
@@ -362,11 +377,7 @@
       const rt = document.getElementById('result-text');
       rt.textContent = data.result;
       rt.style.display = '';
-      navigator.clipboard.writeText(data.result).then(() => {
-        const toast = document.getElementById('toast');
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 2000);
-      });
+      document.getElementById('tap-hint').style.display = '';
     } catch (e) {
       document.getElementById('result-empty').textContent = e.message;
       document.getElementById('result-empty').style.display = '';
