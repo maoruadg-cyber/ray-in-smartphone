@@ -35,6 +35,7 @@
 - `workers/roster.json` — 作業員名簿（57名、R7.11.19〜R8.5.11）
 - `workers/weekly_reports.json` — 工事週報（第1〜5週、2026年5月）
 - `workers/daily_records.json` — 日付別作業記録（2026年5月、18日分）
+- `workers/daily_records_june.json` — 日付別作業記録（2026年6月、6/1〜6/5）
 
 照会時はこれらのファイルも読んで回答する。
 
