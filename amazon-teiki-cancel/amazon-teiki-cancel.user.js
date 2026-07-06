@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amazon定期おトク便 全解約ループ
 // @namespace    https://github.com/maoruadg-cyber/ray-in-smartphone
-// @version      0.4.0
+// @version      0.4.1
 // @description  定期おトク便の管理画面で1回押すと、商品を開く→詳細設定→停止→登録をキャンセル→一覧に戻る、を登録商品がなくなるまで自動でループします。
 // @match        https://www.amazon.co.jp/*
 // @match        https://amazon.co.jp/*
@@ -22,7 +22,8 @@
     //   誤クリックするので入れないこと(v0.3.0の不具合)
     itemLinkPattern: /subscriptionId=|viewsubscription/i,
     // サブスクリプションカードを見つける目印の文言(カード内に必ず表示される)
-    cardMarkerText: '次回のお届け日',
+    // 実際の画面は「次回の配達日」(2026-07 診断で確認済み)。念のため候補制にする
+    cardMarkerTexts: ['次回の配達日', '次回のお届け日'],
     // 「商品の詳細設定」を開くボタン/リンクの文言候補
     detailSettingsTexts: ['商品の詳細設定', '詳細設定', '定期おトク便の設定'],
     // 「定期おトク便を停止する」ボタンの文言候補
@@ -112,7 +113,7 @@
   // 「次回のお届け日」の文言を目印に見つけて、クリック可能な祖先要素ごとクリックする。
   const findSubscriptionCard = () => {
     const withMarker = allElements().filter(
-      (el) => visible(el) && (el.textContent || '').includes(CONFIG.cardMarkerText)
+      (el) => visible(el) && CONFIG.cardMarkerTexts.some((t) => (el.textContent || '').includes(t))
     );
     if (!withMarker.length) return null;
     // 文言を含む一番内側(テキストが最短)の要素 = カード内の日付行
@@ -289,10 +290,10 @@
     }
     // サブスクリプションカードの構造(カードクリックが効かないときの修正用)
     const marker = allElements()
-      .filter((el) => visible(el) && (el.textContent || '').includes(CONFIG.cardMarkerText))
+      .filter((el) => visible(el) && CONFIG.cardMarkerTexts.some((t) => (el.textContent || '').includes(t)))
       .sort((a, b) => (a.textContent || '').length - (b.textContent || '').length)[0];
     if (marker) {
-      lines.push(`--- 「${CONFIG.cardMarkerText}」を含むカードの祖先チェーン ---`);
+      lines.push(`--- 「${CONFIG.cardMarkerTexts[0]}」を含むカードの祖先チェーン ---`);
       let cur = marker;
       for (let i = 0; i < 10 && cur && cur !== document.body; i++) {
         const role = cur.getAttribute ? cur.getAttribute('role') : null;
@@ -311,7 +312,7 @@
         lines.push(card.outerHTML.slice(0, 1500));
       }
     } else {
-      lines.push(`(「${CONFIG.cardMarkerText}」を含む要素は見つかりませんでした)`);
+      lines.push(`(「${CONFIG.cardMarkerTexts.join('」「')}」を含む要素は見つかりませんでした)`);
     }
     const overlay = document.createElement('div');
     overlay.id = 'teiki-diag-overlay';
