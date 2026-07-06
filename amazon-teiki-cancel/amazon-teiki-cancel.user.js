@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amazon定期おトク便 全解約ループ
 // @namespace    https://github.com/maoruadg-cyber/ray-in-smartphone
-// @version      0.3.0
+// @version      0.4.0
 // @description  定期おトク便の管理画面で1回押すと、商品を開く→詳細設定→停止→登録をキャンセル→一覧に戻る、を登録商品がなくなるまで自動でループします。
 // @match        https://www.amazon.co.jp/*
 // @match        https://amazon.co.jp/*
@@ -18,7 +18,11 @@
     // 定期おトク便の管理(一覧)ページ
     listUrl: 'https://www.amazon.co.jp/auto-deliveries',
     // 一覧ページで各商品(定期便)の詳細へ飛ぶリンクのhrefパターン
-    itemLinkPattern: /auto-deliveries\/[^?]|subscriptionId=|viewsubscription/i,
+    // ※「auto-deliveries/」を含めるとナビの「定期おトク便(landing)」「設定(preferences)」を
+    //   誤クリックするので入れないこと(v0.3.0の不具合)
+    itemLinkPattern: /subscriptionId=|viewsubscription/i,
+    // サブスクリプションカードを見つける目印の文言(カード内に必ず表示される)
+    cardMarkerText: '次回のお届け日',
     // 「商品の詳細設定」を開くボタン/リンクの文言候補
     detailSettingsTexts: ['商品の詳細設定', '詳細設定', '定期おトク便の設定'],
     // 「定期おトク便を停止する」ボタンの文言候補
@@ -102,6 +106,43 @@
     allElements().find(
       (el) => el.tagName === 'A' && CONFIG.itemLinkPattern.test(el.href || '') && visible(el)
     ) || null;
+
+  // 「ご利用のサブスクリプション」の商品カードを探す。
+  // カードはAタグではなくJSのクリックハンドラで動くため、カード内に必ず表示される
+  // 「次回のお届け日」の文言を目印に見つけて、クリック可能な祖先要素ごとクリックする。
+  const findSubscriptionCard = () => {
+    const withMarker = allElements().filter(
+      (el) => visible(el) && (el.textContent || '').includes(CONFIG.cardMarkerText)
+    );
+    if (!withMarker.length) return null;
+    // 文言を含む一番内側(テキストが最短)の要素 = カード内の日付行
+    const base = withMarker.sort(
+      (a, b) => (a.textContent || '').length - (b.textContent || '').length
+    )[0];
+    // そこから遡って、クリックハンドラを持っていそうな一番外側の祖先(=カード全体)を探す
+    let clickTarget = base;
+    let cur = base;
+    for (let i = 0; i < 12 && cur && cur !== document.body; i++) {
+      const role = cur.getAttribute && cur.getAttribute('role');
+      if (
+        getComputedStyle(cur).cursor === 'pointer' ||
+        role === 'link' || role === 'button' ||
+        cur.hasAttribute('tabindex') || cur.onclick || cur.tagName === 'A'
+      ) {
+        clickTarget = cur;
+      }
+      cur = cur.parentElement;
+    }
+    return clickTarget;
+  };
+
+  // Reactなどで作られたカードは .click() に反応しないことがあるため、
+  // 実際のマウス操作と同じイベント列を発火させる
+  const fireClick = (el) => {
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+      el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window }));
+    }
+  };
 
   const pageText = () => {
     let t = document.body.innerText || '';
@@ -191,7 +232,7 @@
     const reasonRadio = findReasonRadio(CONFIG.reasonTexts);
     const stopBtn = findClickable(CONFIG.stopTexts);
     const settingsBtn = findClickable(CONFIG.detailSettingsTexts);
-    const itemLink = onListPage() ? findItemLink() : null;
+    const itemEl = onListPage() ? findItemLink() || findSubscriptionCard() : null;
 
     if (confirmBtn && reasonRadio && !reasonRadio.checked) {
       toast(`[${count + 1}件目] 理由を選択中…`);
@@ -209,10 +250,10 @@
       toast(`[${count + 1}件目] 商品の詳細設定を開いています…`);
       settingsBtn.click();
       progress();
-    } else if (itemLink) {
-      toast(`[${count + 1}件目] 商品ページを開いています…`);
+    } else if (itemEl) {
+      toast(`[${count + 1}件目] 商品を開いています…`);
       progress();
-      itemLink.click();
+      fireClick(itemEl);
     } else if (onListPage() && stalledMs > 6000) {
       // 一覧ページで6秒以上なにも見つからない: ページ構造が想定と違う
       stop('⚠ 操作対象が見つかりません。「🔍診断」ボタンを押して、結果を開発者に送ってください。', '#b12704');
@@ -245,6 +286,32 @@
       seen.add(line);
       lines.push(line);
       if (lines.length > 300) break;
+    }
+    // サブスクリプションカードの構造(カードクリックが効かないときの修正用)
+    const marker = allElements()
+      .filter((el) => visible(el) && (el.textContent || '').includes(CONFIG.cardMarkerText))
+      .sort((a, b) => (a.textContent || '').length - (b.textContent || '').length)[0];
+    if (marker) {
+      lines.push(`--- 「${CONFIG.cardMarkerText}」を含むカードの祖先チェーン ---`);
+      let cur = marker;
+      for (let i = 0; i < 10 && cur && cur !== document.body; i++) {
+        const role = cur.getAttribute ? cur.getAttribute('role') : null;
+        lines.push(
+          `${i}: ${cur.tagName}` +
+          (cur.className ? ` class="${String(cur.className).slice(0, 80)}"` : '') +
+          (role ? ` role=${role}` : '') +
+          (cur.hasAttribute('tabindex') ? ' tabindex' : '') +
+          ` cursor=${getComputedStyle(cur).cursor}`
+        );
+        cur = cur.parentElement;
+      }
+      const card = findSubscriptionCard();
+      if (card) {
+        lines.push('--- クリック対象に選ばれた要素のHTML(先頭1500文字) ---');
+        lines.push(card.outerHTML.slice(0, 1500));
+      }
+    } else {
+      lines.push(`(「${CONFIG.cardMarkerText}」を含む要素は見つかりませんでした)`);
     }
     const overlay = document.createElement('div');
     overlay.id = 'teiki-diag-overlay';
