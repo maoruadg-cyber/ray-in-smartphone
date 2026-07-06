@@ -1,11 +1,10 @@
 // ==UserScript==
 // @name         Amazon定期おトク便 全解約ループ
 // @namespace    https://github.com/maoruadg-cyber/ray-in-smartphone
-// @version      0.2.0
+// @version      0.2.1
 // @description  定期おトク便の管理画面で1回押すと、商品を開く→詳細設定→停止→登録をキャンセル→一覧に戻る、を登録商品がなくなるまで自動でループします。
-// @match        https://www.amazon.co.jp/auto-deliveries*
-// @match        https://www.amazon.co.jp/gp/subscribe-and-save/*
-// @match        https://www.amazon.co.jp/gp/mys/*
+// @match        https://www.amazon.co.jp/*
+// @match        https://amazon.co.jp/*
 // @run-at       document-idle
 // @grant        none
 // ==/UserScript==
@@ -199,8 +198,19 @@
   };
 
   // ---- 開始ボタンの設置 -----------------------------------------------------
+  // Amazon全ページで動かしつつ、定期おトク便関連の画面でだけボタンを表示する
+  const isTeikiPage = () =>
+    /auto-deliveries|subscribe-and-save|teiki|mys/i.test(location.href) ||
+    (document.title || '').includes('定期おトク便') ||
+    sessionStorage.getItem(KEY.running); // ループ実行中はどの画面でも表示(停止ボタンとして)
+
   const addButton = () => {
-    if (document.getElementById('teiki-cancel-btn')) return;
+    const existing = document.getElementById('teiki-cancel-btn');
+    if (!isTeikiPage()) {
+      if (existing) existing.remove();
+      return;
+    }
+    if (existing) return;
     const btn = document.createElement('button');
     btn.id = 'teiki-cancel-btn';
     btn.textContent = '⚡ 定期便を全部解約';
