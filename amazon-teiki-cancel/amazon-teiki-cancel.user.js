@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Amazon定期おトク便 全解約ループ
 // @namespace    https://github.com/maoruadg-cyber/ray-in-smartphone
-// @version      0.2.1
+// @version      0.3.0
 // @description  定期おトク便の管理画面で1回押すと、商品を開く→詳細設定→停止→登録をキャンセル→一覧に戻る、を登録商品がなくなるまで自動でループします。
 // @match        https://www.amazon.co.jp/*
 // @match        https://amazon.co.jp/*
@@ -17,12 +17,8 @@
   const CONFIG = {
     // 定期おトク便の管理(一覧)ページ
     listUrl: 'https://www.amazon.co.jp/auto-deliveries',
-    // 一覧ページで各商品(定期便)の詳細へ飛ぶリンクを探すセレクタ候補
-    itemLinkSelectors: [
-      'a[href*="auto-deliveries/subscription"]',
-      'a[href*="subscriptionId"]',
-      'a[href*="/gp/subscribe-and-save/manager/viewsubscription"]',
-    ],
+    // 一覧ページで各商品(定期便)の詳細へ飛ぶリンクのhrefパターン
+    itemLinkPattern: /auto-deliveries\/[^?]|subscriptionId=|viewsubscription/i,
     // 「商品の詳細設定」を開くボタン/リンクの文言候補
     detailSettingsTexts: ['商品の詳細設定', '詳細設定', '定期おトク便の設定'],
     // 「定期おトク便を停止する」ボタンの文言候補
@@ -46,7 +42,20 @@
     cancelled: 'teikiCancel.count',       // 解約済み件数
   };
 
-  // ---- ユーティリティ ----------------------------------------------------
+  // ---- DOM探索ユーティリティ ----------------------------------------------
+  // AmazonはShadow DOMを使うことがあるため、shadowRootの中まで再帰的に探索する
+  const allElements = () => {
+    const out = [];
+    const walk = (root) => {
+      for (const el of root.querySelectorAll('*')) {
+        out.push(el);
+        if (el.shadowRoot) walk(el.shadowRoot);
+      }
+    };
+    walk(document);
+    return out;
+  };
+
   const visible = (el) => {
     if (!el) return false;
     const r = el.getBoundingClientRect();
@@ -55,13 +64,20 @@
 
   const norm = (s) => (s || '').replace(/\s+/g, '');
 
-  // 文言候補のどれかを含む、クリック可能な要素を探す(ボタン・リンク・input)
+  const isClickableTag = (el) =>
+    /^(BUTTON|A)$/.test(el.tagName) ||
+    (el.tagName === 'INPUT' && /submit|button/.test(el.type)) ||
+    el.getAttribute('role') === 'button' ||
+    el.classList.contains('a-button') ||
+    el.classList.contains('a-expander-header');
+
+  // 文言候補のどれかを含む、クリック可能な要素を探す
   const findClickable = (texts) => {
-    const candidates = document.querySelectorAll('button, a, input[type="submit"], [role="button"], .a-button, .a-expander-header');
+    const candidates = allElements().filter((el) => isClickableTag(el) && visible(el));
     for (const text of texts) {
       for (const el of candidates) {
         const label = el.tagName === 'INPUT' ? el.value : el.textContent;
-        if (norm(label).includes(norm(text)) && visible(el)) {
+        if (norm(label).includes(norm(text))) {
           return el.querySelector('input, button') || el;
         }
       }
@@ -70,27 +86,31 @@
   };
 
   const findReasonRadio = (texts) => {
-    const labels = document.querySelectorAll('label, .a-radio');
+    const els = allElements();
+    const labels = els.filter((el) => (el.tagName === 'LABEL' || el.classList.contains('a-radio')) && visible(el));
     for (const text of texts) {
       for (const el of labels) {
-        if ((el.textContent || '').includes(text) && visible(el)) {
+        if ((el.textContent || '').includes(text)) {
           return el.querySelector('input[type="radio"]') || el;
         }
       }
     }
-    return [...document.querySelectorAll('input[type="radio"]')].find(visible) || null;
+    return els.find((el) => el.tagName === 'INPUT' && el.type === 'radio' && visible(el)) || null;
   };
 
-  const findItemLink = () => {
-    for (const sel of CONFIG.itemLinkSelectors) {
-      const link = [...document.querySelectorAll(sel)].find(visible);
-      if (link) return link;
-    }
-    return null;
+  const findItemLink = () =>
+    allElements().find(
+      (el) => el.tagName === 'A' && CONFIG.itemLinkPattern.test(el.href || '') && visible(el)
+    ) || null;
+
+  const pageText = () => {
+    let t = document.body.innerText || '';
+    for (const el of allElements()) if (el.shadowRoot) t += '\n' + (el.shadowRoot.textContent || '');
+    return t;
   };
 
   const pageContains = (texts) => {
-    const body = document.body.innerText || '';
+    const body = pageText();
     return texts.some((t) => body.includes(t));
   };
 
@@ -137,9 +157,10 @@
 
     const count = Number(sessionStorage.getItem(KEY.cancelled) || 0);
     const lastProgress = Number(sessionStorage.getItem(KEY.lastProgress) || 0);
+    const stalledMs = Date.now() - lastProgress;
 
-    if (Date.now() - lastProgress > CONFIG.stepTimeoutMs) {
-      stop(`⏱ ${CONFIG.stepTimeoutMs / 1000}秒進展がないため中断しました(解約済み ${count} 件)。画面の文言が変わった可能性があります。`, '#b12704');
+    if (stalledMs > CONFIG.stepTimeoutMs) {
+      stop(`⏱ ${CONFIG.stepTimeoutMs / 1000}秒進展がないため中断しました(解約済み ${count} 件)。「🔍診断」の結果を開発者に送ってください。`, '#b12704');
       return;
     }
     if (count >= CONFIG.maxItems) {
@@ -147,9 +168,11 @@
       return;
     }
 
-    // --- 終了判定: 一覧ページで商品がもう無い ---
-    if (onListPage() && (pageContains(CONFIG.emptyTexts) || (!findItemLink() && Date.now() - lastProgress > 3000))) {
-      // 一覧の描画待ちを考慮して、3秒リンクが見つからない場合も完了とみなす
+    // --- 終了判定 ---
+    // 「登録商品なし」の文言を検知したときだけ完了扱いにする。
+    // 商品リンクが見つからないだけの場合は、探し方が実際のページ構造と
+    // 合っていない可能性があるため、完了ではなくエラーとして停止する。
+    if (onListPage() && pageContains(CONFIG.emptyTexts)) {
       stop(`✅ 完了！ ${count} 件すべて解約しました。`, '#067d62');
       return;
     }
@@ -190,14 +213,65 @@
       toast(`[${count + 1}件目] 商品ページを開いています…`);
       progress();
       itemLink.click();
+    } else if (onListPage() && stalledMs > 6000) {
+      // 一覧ページで6秒以上なにも見つからない: ページ構造が想定と違う
+      stop('⚠ 操作対象が見つかりません。「🔍診断」ボタンを押して、結果を開発者に送ってください。', '#b12704');
+      return;
     }
-    // どれも見つからない場合は何もせず次のtickへ(描画待ち)。
-    // stepTimeoutMsを超えたら冒頭の判定で中断される。
+    // どれも見つからない場合は何もせず次のtickへ(描画待ち)
 
     setTimeout(tick, CONFIG.tickMs);
   };
 
-  // ---- 開始ボタンの設置 -----------------------------------------------------
+  // ---- 診断モード -----------------------------------------------------------
+  // ページ上のクリック可能要素を一覧にして表示する。
+  // スクリプトがボタンを見つけられないとき、この結果を見れば
+  // CONFIGの文言リストをどう直せばいいか分かる。
+  const runDiagnostic = () => {
+    const lines = [
+      `URL: ${location.href}`,
+      `title: ${document.title}`,
+      `iframes: ${document.querySelectorAll('iframe').length}`,
+      '--- クリック可能要素 (tag | text | href) ---',
+    ];
+    const seen = new Set();
+    for (const el of allElements()) {
+      if (!isClickableTag(el) || !visible(el)) continue;
+      const text = (el.tagName === 'INPUT' ? el.value : el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 50);
+      const href = (el.href || '').slice(0, 120);
+      const line = `${el.tagName} | ${text} | ${href}`;
+      if (!text && !href) continue;
+      if (seen.has(line)) continue;
+      seen.add(line);
+      lines.push(line);
+      if (lines.length > 300) break;
+    }
+    const overlay = document.createElement('div');
+    overlay.id = 'teiki-diag-overlay';
+    overlay.style.cssText =
+      'position:fixed;inset:5% 5%;z-index:100000;background:#fff;border:2px solid #232f3e;' +
+      'border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px;box-shadow:0 4px 24px rgba(0,0,0,.4);';
+    const ta = document.createElement('textarea');
+    ta.value = lines.join('\n');
+    ta.style.cssText = 'flex:1;width:100%;font-size:11px;font-family:monospace;';
+    const bar = document.createElement('div');
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = '📋 全部コピー';
+    copyBtn.style.cssText = 'padding:8px 16px;margin-right:8px;cursor:pointer;';
+    copyBtn.onclick = () => {
+      ta.select();
+      navigator.clipboard.writeText(ta.value).then(() => (copyBtn.textContent = '✅ コピーしました'));
+    };
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '閉じる';
+    closeBtn.style.cssText = 'padding:8px 16px;cursor:pointer;';
+    closeBtn.onclick = () => overlay.remove();
+    bar.append(copyBtn, closeBtn);
+    overlay.append(ta, bar);
+    document.body.appendChild(overlay);
+  };
+
+  // ---- ボタンの設置 -----------------------------------------------------
   // Amazon全ページで動かしつつ、定期おトク便関連の画面でだけボタンを表示する
   const isTeikiPage = () =>
     /auto-deliveries|subscribe-and-save|teiki|mys/i.test(location.href) ||
@@ -208,9 +282,12 @@
     const existing = document.getElementById('teiki-cancel-btn');
     if (!isTeikiPage()) {
       if (existing) existing.remove();
+      const diag = document.getElementById('teiki-diag-btn');
+      if (diag) diag.remove();
       return;
     }
     if (existing) return;
+
     const btn = document.createElement('button');
     btn.id = 'teiki-cancel-btn';
     btn.textContent = '⚡ 定期便を全部解約';
@@ -227,6 +304,16 @@
       start();
     });
     document.body.appendChild(btn);
+
+    const diagBtn = document.createElement('button');
+    diagBtn.id = 'teiki-diag-btn';
+    diagBtn.textContent = '🔍 診断';
+    diagBtn.style.cssText =
+      'position:fixed;bottom:20px;right:200px;z-index:99999;padding:12px 16px;' +
+      'background:#232f3e;color:#fff;border:none;border-radius:24px;font-size:13px;' +
+      'box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;';
+    diagBtn.addEventListener('click', runDiagnostic);
+    document.body.appendChild(diagBtn);
   };
 
   addButton();
