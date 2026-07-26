@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>接客翻訳アシスタント</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Noto Sans JP", sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: #1a56db;
+      color: #fff;
+      padding: 16px 20px;
+      text-align: center;
+    }
+
+    header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    header p {
+      font-size: 12px;
+      opacity: 0.85;
+      margin-top: 4px;
+    }
+
+    .mode-tabs {
+      display: flex;
+      background: #fff;
+      border-bottom: 2px solid #e2e8f0;
+    }
+
+    .mode-tab {
+      flex: 1;
+      padding: 14px 8px;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      color: #718096;
+      transition: all 0.2s;
+      border-bottom: 3px solid transparent;
+      margin-bottom: -2px;
+    }
+
+    .mode-tab.active {
+      color: #1a56db;
+      border-bottom-color: #1a56db;
+    }
+
+    .mode-tab .tab-icon {
+      display: block;
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
+
+    .main {
+      flex: 1;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 16px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    .card label {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: #718096;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 8px;
+    }
+
+    textarea {
+      width: 100%;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 16px;
+      font-family: inherit;
+      resize: none;
+      min-height: 100px;
+      transition: border-color 0.2s;
+      color: #2d3748;
+      line-height: 1.6;
+    }
+
+    textarea:focus {
+      outline: none;
+      border-color: #1a56db;
+    }
+
+    textarea::placeholder {
+      color: #a0aec0;
+    }
+
+    .char-hint {
+      text-align: right;
+      font-size: 11px;
+      color: #a0aec0;
+      margin-top: 4px;
+    }
+
+    .translate-btn {
+      width: 100%;
+      padding: 15px;
+      background: #1a56db;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .translate-btn:active { transform: scale(0.98); }
+    .translate-btn:disabled { background: #a0aec0; cursor: not-allowed; }
+    .translate-btn.loading { background: #4a7fdb; }
+
+    .result-card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      overflow: hidden;
+    }
+
+    .result-header {
+      background: #ebf4ff;
+      padding: 10px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .result-header span {
+      font-size: 12px;
+      font-weight: 700;
+      color: #1a56db;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .copy-btn {
+      background: none;
+      border: 1px solid #1a56db;
+      color: #1a56db;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .copy-btn:active { background: #1a56db; color: #fff; }
+
+    .result-text {
+      padding: 16px;
+      font-size: 16px;
+      color: #2d3748;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      min-height: 80px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: rgba(26,86,219,0.1);
+    }
+
+    .result-text:active {
+      background: #f0f7ff;
+    }
+
+    .tap-hint {
+      text-align: center;
+      font-size: 11px;
+      color: #a0aec0;
+      padding: 0 16px 10px;
+    }
+
+    .result-empty {
+      padding: 32px 16px;
+      text-align: center;
+      color: #a0aec0;
+      font-size: 14px;
+    }
+
+    .spinner {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .mode-hint {
+      background: #fffbeb;
+      border-left: 3px solid #f6c90e;
+      border-radius: 0 8px 8px 0;
+      padding: 10px 14px;
+      font-size: 13px;
+      color: #744210;
+      line-height: 1.5;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: #2d3748;
+      color: #fff;
+      padding: 10px 20px;
+      border-radius: 20px;
+      font-size: 14px;
+      transition: transform 0.3s;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    .toast.show { transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>接客翻訳アシスタント</h1>
+  <p>Customer Service Translation</p>
+</header>
+
+<div class="mode-tabs">
+  <button class="mode-tab active" id="tab-staff" onclick="switchMode('staff')">
+    <span class="tab-icon">🧑‍💼</span>
+    スタッフ<br><small>日本語 → 英語</small>
+  </button>
+  <button class="mode-tab" id="tab-customer" onclick="switchMode('customer')">
+    <span class="tab-icon">🌍</span>
+    お客様対応<br><small>英語 → 日本語</small>
+  </button>
+</div>
+
+<div class="main">
+
+  <div class="mode-hint" id="mode-hint"></div>
+
+  <div class="card">
+    <label id="input-label">入力</label>
+    <textarea id="input-text" rows="5" placeholder="" oninput="updateChar()"></textarea>
+    <div class="char-hint"><span id="char-count">0</span> 文字</div>
+  </div>
+
+  <button class="translate-btn" id="translate-btn" onclick="translate()">
+    <span id="btn-label">翻訳する</span>
+  </button>
+
+  <div class="result-card" id="result-card">
+    <div class="result-header">
+      <span id="result-lang">翻訳結果</span>
+      <button class="copy-btn" onclick="copyResult()">コピー</button>
+    </div>
+    <div class="result-empty" id="result-empty">翻訳結果がここに表示されます</div>
+    <div class="result-text" id="result-text" style="display:none" onclick="copyResult()"></div>
+    <div class="tap-hint" id="tap-hint" style="display:none">タップでコピー</div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast">コピーしました</div>
+
+<script>
+  let currentMode = 'staff';
+
+  const config = {
+    staff: {
+      hint: '🧑‍💼 接客モード：日本語で入力すると、お客様に向けた丁寧な英語に翻訳します。',
+      inputLabel: '日本語テキスト',
+      placeholder: '例：少々お待ちください。すぐにお持ちします。',
+      resultLang: '英語（接客用）',
+      btnLabel: '英語に翻訳',
+    },
+    customer: {
+      hint: '🌍 お客様対応モード：お客様の英語を日本語に翻訳します。お客様が言っていることをそのままの丁寧な日本語で確認できます。',
+      inputLabel: 'English Text (Customer\'s words)',
+      placeholder: 'e.g. Excuse me, could I get the check please?',
+      resultLang: '日本語（お客様の言葉）',
+      btnLabel: '日本語に翻訳',
+    },
+  };
+
+  function switchMode(mode) {
+    currentMode = mode;
+    const cfg = config[mode];
+
+    document.getElementById('tab-staff').classList.toggle('active', mode === 'staff');
+    document.getElementById('tab-customer').classList.toggle('active', mode === 'customer');
+
+    document.getElementById('mode-hint').textContent = cfg.hint;
+    document.getElementById('input-label').textContent = cfg.inputLabel;
+    document.getElementById('input-text').placeholder = cfg.placeholder;
+    document.getElementById('result-lang').textContent = cfg.resultLang;
+    document.getElementById('btn-label').textContent = cfg.btnLabel;
+
+    document.getElementById('input-text').value = '';
+    document.getElementById('char-count').textContent = '0';
+    clearResult();
+  }
+
+  let autoTimer = null;
+
+  function updateChar() {
+    const len = document.getElementById('input-text').value.length;
+    document.getElementById('char-count').textContent = len;
+
+    clearTimeout(autoTimer);
+    if (len > 0) {
+      autoTimer = setTimeout(translate, 800);
+    } else {
+      clearResult();
+    }
+  }
+
+  function clearResult() {
+    document.getElementById('result-empty').style.display = '';
+    document.getElementById('result-empty').textContent = '翻訳結果がここに表示されます';
+    document.getElementById('result-text').style.display = 'none';
+    document.getElementById('result-text').textContent = '';
+    document.getElementById('tap-hint').style.display = 'none';
+  }
+
+  async function translate() {
+    const text = document.getElementById('input-text').value.trim();
+    if (!text) return;
+
+    const btn = document.getElementById('translate-btn');
+    btn.disabled = true;
+    btn.classList.add('loading');
+    document.getElementById('btn-label').innerHTML = '<span class="spinner"></span>';
+
+    try {
+      const res = await fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, mode: currentMode }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.detail || '翻訳に失敗しました');
+
+      document.getElementById('result-empty').style.display = 'none';
+      const rt = document.getElementById('result-text');
+      rt.textContent = data.result;
+      rt.style.display = '';
+      document.getElementById('tap-hint').style.display = '';
+    } catch (e) {
+      document.getElementById('result-empty').textContent = e.message;
+      document.getElementById('result-empty').style.display = '';
+      document.getElementById('result-text').style.display = 'none';
+    } finally {
+      btn.disabled = false;
+      btn.classList.remove('loading');
+      document.getElementById('btn-label').textContent = config[currentMode].btnLabel;
+    }
+  }
+
+  function copyResult() {
+    const text = document.getElementById('result-text').textContent;
+    if (!text) return;
+
+    const showToast = () => {
+      const toast = document.getElementById('toast');
+      toast.classList.add('show');
+      setTimeout(() => toast.classList.remove('show'), 2000);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(showToast).catch(() => fallbackCopy(text, showToast));
+    } else {
+      fallbackCopy(text, showToast);
+    }
+  }
+
+  function fallbackCopy(text, callback) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    try {
+      document.execCommand('copy');
+      callback();
+    } catch (e) {}
+    document.body.removeChild(ta);
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    switchMode('staff');
+  });
+</script>
+</body>
+</html>
